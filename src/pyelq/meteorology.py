@@ -117,10 +117,20 @@ class Meteorology:
 
         """
         data_series = pd.Series(data=self.wind_direction, index=self.time)
-        sin_rolling = (np.sin(data_series * np.pi / 180)).rolling(window=window, center=True, min_periods=3).mean()
-        cos_rolling = (np.cos(data_series * np.pi / 180)).rolling(window=window, center=True, min_periods=3).mean()
-        aggregated_data = np.sqrt(-2 * np.log((sin_rolling**2 + cos_rolling**2) ** 0.5)) * 180 / np.pi
-        self.wind_turbulence_horizontal = aggregated_data.values
+
+        # Group by each day
+        daily_data_chunk = [group for _, group in data_series.groupby(pd.Grouper(freq='d'))]
+
+        aggregated_data_series = pd.DataFrame()
+        for daily_data_series in daily_data_chunk:
+            sin_rolling = (np.sin(daily_data_series * np.pi / 180)).rolling(window=window, center=True, min_periods=3).mean()
+            cos_rolling = (np.cos(daily_data_series * np.pi / 180)).rolling(window=window, center=True, min_periods=3).mean()
+            aggregated_data = np.sqrt(-2 * np.log((sin_rolling**2 + cos_rolling**2) ** 0.5)) * 180 / np.pi
+            aggregated_data_series_chunk = pd.Series(data=aggregated_data, index=daily_data_series.index)
+            aggregated_data_series = pd.concat([aggregated_data_series, aggregated_data_series_chunk], axis=0)
+
+        
+        self.wind_turbulence_horizontal = aggregated_data_series.values
 
     def plot_polar_hist(self, nof_sectors: int = 16, nof_divisions: int = 5, template: object = None) -> go.Figure():
         """Plots a histogram of wind speed and wind direction in polar Coordinates.
