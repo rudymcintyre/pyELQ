@@ -9,14 +9,13 @@ This module provides tests for the gas species superclass in pyELQ
 
 """
 
-
 import numpy as np
 import pytest
 
-from pyelq.gas_species import C2H6, C3H8, CH4, CO2, NO2
+from pyelq.gas_species import C2H6, C3H8, CH4, CO2, H2, NO2
 
 
-@pytest.mark.parametrize("gas_species", [CH4, C2H6, C3H8, CO2, NO2])
+@pytest.mark.parametrize("gas_species", [CH4, C2H6, C3H8, CO2, NO2, H2])
 def test_consistency_emission_rate(gas_species):
     """Basic test to check consistency in gas species methods.
 
@@ -27,10 +26,11 @@ def test_consistency_emission_rate(gas_species):
         gas_species (pyelq.gas_species): gas species type to check
 
     """
-    emission_m3s_start = np.random.rand(5, 1) * 10
-    emission_kghr_start = np.random.rand(5, 1) * 1000
-    alternate_temperature = 273.15 * (np.random.rand(1) + 0.5)
-    alternate_pressure = 100 * (np.random.rand(1) + 0.5)
+    rng = np.random.default_rng(42)
+    emission_m3s_start = rng.random((5, 1)) * 10
+    emission_kghr_start = rng.random((5, 1)) * 1000
+    alternate_temperature = 273.15 * (rng.random(1) + 0.5)
+    alternate_pressure = 100 * (rng.random(1) + 0.5)
     gas_object = gas_species()
 
     kghr_intermediate = gas_object.convert_emission_m3s_to_kghr(emission_m3s_start)
@@ -69,6 +69,7 @@ def test_consistency_emission_rate(gas_species):
         (CO2, 293.15, 1.842),
         (CO2, 273.15, 1.977),
         (NO2, 273.15, 2.05),
+        (H2, 273.15, 0.08988),
     ],
 )
 def test_density_calculation(gas_species, temperature, density):
@@ -89,7 +90,7 @@ def test_density_calculation(gas_species, temperature, density):
     assert np.isclose(result, density, rtol=1e-2)
 
 
-@pytest.mark.parametrize("gas_species", [CH4, C2H6, C3H8, CO2, NO2])
+@pytest.mark.parametrize("gas_species", [CH4, C2H6, C3H8, CO2, NO2, H2])
 def test_name_and_formula(gas_species):
     """Test to see if name and formula give back a string output."""
     gas_object = gas_species()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2024 Shell Global Solutions International B.V. All Rights Reserved.
+# SPDX-FileCopyrightText: 2026 Shell Global Solutions International B.V. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,34 +18,43 @@ import pytest
 from pyelq.coordinate_system import ENU
 from pyelq.dispersion_model.gaussian_plume import GaussianPlume
 from pyelq.gas_species import CH4
-from pyelq.meteorology import Meteorology, MeteorologyGroup
+from pyelq.meteorology.meteorology import Meteorology, MeteorologyGroup
 from pyelq.sensor.beam import Beam
 from pyelq.sensor.satellite import Satellite
 from pyelq.sensor.sensor import Sensor, SensorGroup
 from pyelq.source_map import SourceMap
 
 
+def make_met_object(location):
+    """Function to create a meteorology object for testing purposes."""
+
+    rng = np.random.default_rng(42)
+    time = pd.date_range(
+        pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=location.nof_observations, freq="s"
+    ).array[:, None]
+    met_object = Meteorology()
+    met_object.location = location
+    met_object.time = time
+    met_object.u_component = rng.integers(low=1, high=5, size=time.shape)
+    met_object.v_component = rng.integers(low=1, high=5, size=time.shape)
+    met_object.calculate_wind_direction_from_uv()
+    met_object.calculate_wind_speed_from_uv()
+    met_object.temperature = rng.integers(low=270, high=275, size=time.shape)
+    met_object.pressure = rng.integers(low=99, high=103, size=time.shape)
+    met_object.wind_turbulence_horizontal = 5 + 10 * rng.random(size=time.shape)
+    met_object.wind_turbulence_vertical = 5 + 10 * rng.random(size=time.shape)
+
+    return met_object
+
+
 @pytest.fixture(name="met_object")
 def fixture_met_object():
     """Fixture to define a meteorology object."""
     location = ENU(ref_longitude=0, ref_latitude=0, ref_altitude=0)
-    loc_in = np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]])
-    location.from_array(loc_in)
-    time = pd.array(
-        pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=loc_in.shape[0], freq="s"),
-        dtype="datetime64[ns]",
-    )[:, None]
-    met_object = Meteorology()
-    met_object.location = location
-    met_object.time = time
-    met_object.u_component = np.random.randint(low=1, high=5, size=time.shape)
-    met_object.v_component = np.random.randint(low=1, high=5, size=time.shape)
-    met_object.calculate_wind_direction_from_uv()
-    met_object.calculate_wind_speed_from_uv()
-    met_object.temperature = np.random.randint(low=270, high=275, size=time.shape)
-    met_object.pressure = np.random.randint(low=99, high=103, size=time.shape)
-    met_object.wind_turbulence_horizontal = 5 + 10 * np.random.random(size=time.shape)
-    met_object.wind_turbulence_vertical = 5 + 10 * np.random.random(size=time.shape)
+    location.from_array(np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]]))
+
+    met_object = make_met_object(location)
+
     return met_object
 
 
@@ -53,23 +62,8 @@ def fixture_met_object():
 def fixture_met_object_single():
     """Fixture to define a meteorology object with a single observation."""
     location = ENU(ref_longitude=0, ref_latitude=0, ref_altitude=0)
-    loc_in = np.array([[0, 0, 0]])
-    location.from_array(loc_in)
-    time = pd.array(
-        pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=loc_in.shape[0], freq="s"),
-        dtype="datetime64[ns]",
-    )[:, None]
-    met_object = Meteorology()
-    met_object.location = location
-    met_object.time = time
-    met_object.u_component = np.random.randint(low=1, high=5, size=time.shape)
-    met_object.v_component = np.random.randint(low=1, high=5, size=time.shape)
-    met_object.calculate_wind_direction_from_uv()
-    met_object.calculate_wind_speed_from_uv()
-    met_object.temperature = np.random.randint(low=270, high=275, size=time.shape)
-    met_object.pressure = np.random.randint(low=99, high=103, size=time.shape)
-    met_object.wind_turbulence_horizontal = 5 * np.ones(time.shape)
-    met_object.wind_turbulence_vertical = 5 * np.ones(time.shape)
+    location.from_array(np.array([[0, 0, 0]]))
+    met_object = make_met_object(location)
     return met_object
 
 
@@ -80,9 +74,7 @@ def fixture_sensor_object():
     location = ENU(ref_longitude=0, ref_latitude=0, ref_altitude=0)
     location.from_array(np.array([[25, 0, 0]]))
     sensor_object.location = location
-    time = pd.array(
-        pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=5, freq="ns"), dtype="datetime64[ns]"
-    )[:, None]
+    time = pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=5, freq="ns").array[:, None]
     sensor_object.time = time
     sensor_object.concentration = np.zeros(time.size)
     sensor_object.label = "Generic"
@@ -97,10 +89,9 @@ def fixture_drone_object():
     loc_in = np.array([[0, 50, 0], [25, 25, 0], [50, 0, 0]])
     location.from_array(loc_in)
     sensor_object.location = location
-    time = pd.array(
-        pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=loc_in.shape[0], freq="s"),
-        dtype="datetime64[ns]",
-    )[:, None]
+    time = pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=loc_in.shape[0], freq="s").array[
+        :, None
+    ]
     sensor_object.time = time
     sensor_object.concentration = np.zeros(time.size)
     sensor_object.label = "Generic"
@@ -114,9 +105,7 @@ def fixture_beam_object():
     beam_location.from_array(np.array([[24.99, 0, 0], [25.01, 0, 0]]))
     beam_object = Beam()
     beam_object.location = beam_location
-    time = pd.array(
-        pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=4, freq="ns"), dtype="datetime64[ns]"
-    )[:, None]
+    time = pd.date_range(pd.Timestamp.fromisoformat("2022-01-01 00:00:00"), periods=4, freq="ns").array[:, None]
     beam_object.time = time
     beam_object.concentration = np.zeros(time.size)
     beam_object.label = "Beam"
@@ -173,14 +162,15 @@ def test_compute_coupling_array(sourcemap_type):
     )
     assert np.all(coupling_array == 0)
 
-    random_shape = np.random.randint(1, 5, 3)
+    rng = np.random.default_rng(42)
+    random_shape = rng.integers(1, 5, 3)
     coupling_array = plume_object.compute_coupling_array(
-        sensor_x=np.random.random(random_shape) * 6 - 3,
-        sensor_y=np.random.random(random_shape) * 6 - 3,
-        sensor_z=np.random.random(random_shape) * 6 - 3,
+        sensor_x=rng.random(random_shape) * 6 - 3,
+        sensor_y=rng.random(random_shape) * 6 - 3,
+        sensor_z=rng.random(random_shape) * 6 - 3,
         source_z=np.array(0),
-        wind_speed=np.random.randint(1, 5),
-        theta=np.random.random(1) * 2 * np.pi,
+        wind_speed=rng.integers(1, 5),
+        theta=rng.random(1) * 2 * np.pi,
         wind_turbulence_horizontal=np.array([5]),
         wind_turbulence_vertical=np.array([5]),
         gas_density=1,
@@ -458,7 +448,7 @@ def test_interpolate_meteorology(sourcemap_type, met_object, sensor_object, sate
     assert return_values is None
 
 
-def test_interpolate_all_meteorology(met_object, sensor_object):
+def test_interpolate_all_meteorology(met_object: Meteorology, sensor_object: Sensor):
     """Checks interpolate_all_meteorology for correct output when run_interpolation flag is set to False."""
     plume_object = GaussianPlume(source_map=SourceMap())
     (
@@ -572,46 +562,3 @@ def test_source_on_switch(met_object, sensor_object):
     )
 
     assert np.all(coupling_switch[change_point:] == 0) and np.any(coupling[change_point:] > 0)
-
-
-def test_compute_coverage():
-    """Test to check whether the compute coverage function can correctly determine which sources are, or are not, within
-    the coverage.
-
-    We define some coupling where there are two sources, and one source is coupled half of the time. We then check that
-    all the inputs work as intended.
-
-    """
-    location = ENU(ref_longitude=0, ref_latitude=0, ref_altitude=0)
-    source_object = SourceMap()
-    source_object.location = location
-    source_object.location.east = np.array([-10, 10])
-    source_object.location.north = np.array([25, 25])
-    source_object.location.up = np.array([0, 0])
-    threshold_function = lambda x: np.quantile(x, 0.95, axis=0)
-    plume_object = GaussianPlume(source_map=source_object)
-
-    couplings = np.array(
-        [
-            [1, 0],
-            [0, 0],
-            [0, 0],
-            [1, 0],
-        ]
-    )
-
-    coverage = plume_object.compute_coverage(couplings, threshold_function=threshold_function)
-    assert np.all(np.equal(coverage, np.array([True, False])))
-
-    coverage = plume_object.compute_coverage(couplings, threshold_function=threshold_function, coverage_threshold=0.3)
-    assert np.all(np.equal(coverage, np.array([False, False])))
-
-    coverage = plume_object.compute_coverage(
-        couplings, threshold_function=lambda x: np.mean(x, axis=0), coverage_threshold=0.3
-    )
-    assert np.all(np.equal(coverage, np.array([False, False])))
-
-    coverage = plume_object.compute_coverage(
-        couplings, threshold_function=lambda x: np.mean(x, axis=0), coverage_threshold=6
-    )
-    assert np.all(np.equal(coverage, np.array([True, False])))

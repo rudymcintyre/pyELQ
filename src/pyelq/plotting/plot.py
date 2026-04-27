@@ -9,6 +9,8 @@ Large module containing all the plotting code used to create various plots. Cont
 definition.
 
 """
+
+import re
 import warnings
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -16,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Callable, Type, Union
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
 from geojson import Feature, FeatureCollection
@@ -37,6 +40,9 @@ from pyelq.support_functions.post_processing import (
 
 if TYPE_CHECKING:
     from pyelq.model import ELQModel
+
+RGB_LIGHT_BLUE = "rgb(102, 197, 204)"
+MCMC_ITERATION_NUMBER_LITERAL = "MCMC Iteration Number"
 
 
 def lighter_rgb(rbg_string: str) -> str:
@@ -162,16 +168,9 @@ def create_trace_specifics(object_to_plot: Union[Type[SlabAndSpike], SourceModel
     if isinstance(object_to_plot, SourceModel):
         dict_key = kwargs.pop("dict_key", "number_of_sources_plot")
         title_text = "Number of Sources 'on' against MCMC iterations"
-        x_label = "MCMC Iteration Number"
+        x_label = MCMC_ITERATION_NUMBER_LITERAL
         y_label = "Number of Sources 'on'"
-        emission_rates = object_to_plot.emission_rate
-        if isinstance(object_to_plot, SlabAndSpike):
-            total_nof_sources = emission_rates.shape[0]
-            y_values = total_nof_sources - np.sum(object_to_plot.allocation, axis=0)
-        elif object_to_plot.reversible_jump:
-            y_values = np.count_nonzero(np.logical_not(np.isnan(emission_rates)), axis=0)
-        else:
-            raise TypeError("No plotting routine implemented for this SourceModel type.")
+        y_values = object_to_plot.number_on_sources
         x_values = np.array(range(y_values.size))
         color = "rgb(248, 156, 116)"
         name = "Number of Sources 'on'"
@@ -179,11 +178,11 @@ def create_trace_specifics(object_to_plot: Union[Type[SlabAndSpike], SourceModel
     elif isinstance(object_to_plot, MCMC):
         dict_key = kwargs.pop("dict_key", "log_posterior_plot")
         title_text = "Log posterior values against MCMC iterations"
-        x_label = "MCMC Iteration Number"
+        x_label = MCMC_ITERATION_NUMBER_LITERAL
         y_label = "Log Posterior<br>Value"
         y_values = object_to_plot.store["log_post"].flatten()
         x_values = np.array(range(y_values.size))
-        color = "rgb(102, 197, 204)"
+        color = RGB_LIGHT_BLUE
         name = "Log Posterior"
 
         if "burn_in" not in kwargs:
@@ -245,7 +244,7 @@ def create_plot_specifics(
         if plot_type == "line":
             dict_key = kwargs.pop("dict_key", "error_model_iterations")
             title_text = "Estimated Error Model Values"
-            x_label = "MCMC Iteration Number"
+            x_label = MCMC_ITERATION_NUMBER_LITERAL
             y_label = "Estimated Error Model<br>Standard Deviation (ppm)"
 
         elif plot_type == "box":
@@ -270,7 +269,7 @@ def create_plot_specifics(
         if plot_type == "line":
             dict_key = kwargs.pop("dict_key", "offset_iterations")
             title_text = f"Estimated Value of Offset w.r.t. {offset_sensor_name}"
-            x_label = "MCMC Iteration Number"
+            x_label = MCMC_ITERATION_NUMBER_LITERAL
             y_label = "Estimated Offset<br>Value (ppm)"
 
         elif plot_type == "box":
@@ -382,7 +381,7 @@ def plot_single_box(fig: go.Figure, y_values: np.ndarray, color: str, name: str)
 
 def plot_polygons_on_map(
     polygons: Union[np.ndarray, list], values: np.ndarray, opacity: float, map_color_scale: str, **kwargs: Any
-) -> go.Choroplethmapbox:
+) -> go.Choroplethmap:
     """Plot a set of polygons on a map.
 
     Args:
@@ -391,11 +390,11 @@ def plot_polygons_on_map(
                              used in coloring the polygons on the map.
         opacity (float): Float between 0 and 1 specifying the opacity of the polygon fill color.
         map_color_scale (str): The string which defines which plotly color scale.
-        **kwargs (Any): Additional key word arguments which can be passed on the go.Choroplethmapbox object
+        **kwargs (Any): Additional key word arguments which can be passed on the go.Choroplethmap object
             (will override the default values as specified in this function)
 
     Returns:
-        trace: go.Choroplethmapbox trace with the colored polygons which can be added to a go.Figure object.
+        trace: go.Choroplethmap trace with the colored polygons which can be added to a go.Figure object.
 
     """
     polygon_id = list(range(values.shape[0]))
@@ -424,7 +423,7 @@ def plot_polygons_on_map(
     for key, value in kwargs.items():
         trace_options[key] = value
 
-    trace = go.Choroplethmapbox(**trace_options)
+    trace = go.Choroplethmap(**trace_options)
 
     return trace
 
@@ -437,7 +436,7 @@ def plot_regular_grid(
     tolerance: float = 1e-7,
     unit: str = "kg/hr",
     name="Values",
-) -> go.Choroplethmapbox:
+) -> go.Choroplethmap:
     """Plots a regular grid of LLA data onto a map.
 
     So long as the input array is regularly spaced, the value of the spacing is found. A set of rectangles are defined
@@ -455,7 +454,7 @@ def plot_regular_grid(
         name (str, optional): Name for the trace to be used in the color bar as well
 
     Returns:
-        trace (go.Choroplethmapbox): Trace with the colored polygons which can be added to a go.Figure object.
+        trace (go.Choroplethmap): Trace with the colored polygons which can be added to a go.Figure object.
 
     """
     _, gridsize_lat = is_regularly_spaced(coordinates.latitude, tolerance=tolerance)
@@ -541,14 +540,12 @@ class Plot:
 
     Attributes:
         figure_dict (dict): Figure dictionary, used as storage using keys to identify the different figures.
-        mapbox_token (str, optional): Optional mapbox token, used for plotting mapbox backgrounds.
         layout (dict, optional): Layout template for plotly figures, used in all figures generated using this class
             instance.
 
     """
 
     figure_dict: dict = field(default_factory=dict)
-    mapbox_token: str = "empty"
     layout: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -818,7 +815,7 @@ class Plot:
 
         dict_key = "estimated_values_plot"
         title_text = "Estimated Values of Sources With Respect to MCMC Iterations"
-        x_label = "MCMC Iteration Number"
+        x_label = MCMC_ITERATION_NUMBER_LITERAL
         y_label = "Estimated Emission<br>Values (kg/hr)"
 
         fig = go.Figure()
@@ -835,13 +832,17 @@ class Plot:
 
         for source_idx in range(source_model_object.emission_rate.shape[0]):
             y_values = source_model_object.emission_rate[source_idx, :]
+            if source_model_object.individual_source_labels[source_idx] is not None:
+                source_label = source_model_object.individual_source_labels[source_idx]
+            else:
+                source_label = f"Source {source_idx}"
 
             fig = plot_single_scatter(
                 fig=fig,
                 x_values=x_values,
                 y_values=y_values,
-                color="rgb(102, 197, 204)",
-                name=f"Source {source_idx}",
+                color=RGB_LIGHT_BLUE,
+                name=source_label,
                 burn_in=burn_in,
                 show_legend=False,
                 legend_group="Source traces",
@@ -851,7 +852,7 @@ class Plot:
             fig=fig,
             x_values=np.array([None]),
             y_values=np.array([None]),
-            color="rgb(102, 197, 204)",
+            color=RGB_LIGHT_BLUE,
             name="Source traces",
             burn_in=0,
             show_legend=True,
@@ -897,21 +898,20 @@ class Plot:
 
         self.figure_dict[dict_key] = fig
 
-    def create_empty_mapbox_figure(self, dict_key: str = "map_plot") -> None:
-        """Creating an empty mapbox figure to use when you want to add additional traces on a map.
+    def create_empty_map_figure(self, dict_key: str = "map_plot") -> None:
+        """Creating an empty map figure to use when you want to add additional traces on a map.
 
         Args:
             dict_key (str, optional): String key for figure dictionary
 
         """
         self.figure_dict[dict_key] = go.Figure(
-            data=go.Scattermapbox(),
+            data=go.Scattermap(),
             layout={
-                "mapbox_style": "carto-positron",
-                "mapbox_center_lat": 0,
-                "mapbox_center_lon": 0,
-                "mapbox_zoom": 0,
-                "mapbox_accesstoken": self.mapbox_token,
+                "map_style": "carto-positron",
+                "map_center_lat": 0,
+                "map_center_lon": 0,
+                "map_zoom": 0,
             },
         )
 
@@ -938,7 +938,7 @@ class Plot:
         latitude_check, _ = is_regularly_spaced(coordinates.latitude)
         longitude_check, _ = is_regularly_spaced(coordinates.longitude)
         if latitude_check and longitude_check:
-            self.create_empty_mapbox_figure(dict_key=dict_key)
+            self.create_empty_map_figure(dict_key=dict_key)
             trace = plot_regular_grid(
                 coordinates=coordinates,
                 values=values,
@@ -958,13 +958,13 @@ class Plot:
                 show_positions=show_positions,
                 aggregate_function=aggregate_function,
             )
-            fig.update_layout(mapbox_accesstoken=self.mapbox_token, mapbox_style="carto-positron")
+            fig.update_layout(map_style="carto-positron")
             self.figure_dict[dict_key] = fig
 
         center_longitude = np.mean(coordinates.longitude)
         center_latitude = np.mean(coordinates.latitude)
         self.figure_dict[dict_key].update_layout(
-            mapbox={"zoom": 10, "center": {"lon": center_longitude, "lat": center_latitude}}
+            map={"zoom": 10, "center": {"lon": center_longitude, "lat": center_latitude}}
         )
 
         if self.layout is not None:
@@ -973,20 +973,24 @@ class Plot:
     def plot_quantification_results_on_map(
         self,
         model_object: "ELQModel",
+        source_model_to_plot_key: str = None,
         bin_size_x: float = 1,
         bin_size_y: float = 1,
         normalized_count_limit: float = 0.005,
         burn_in: int = 0,
         show_summary_results: bool = True,
+        show_fixed_source_locations: bool = True,
     ):
         """Function to create a map with the quantification results of the model object.
 
-        This function takes the ELQModel object and calculates the statistics for the quantification results. It then
-        populates the figure dictionary with three different maps showing the normalized count, median emission rate
-        and the inter-quartile range of the emission rate estimates.
+        This function takes the "SourceModel" object and calculates the statistics for the quantification results.
+        It then populates the figure dictionary with three different maps showing the normalized count,
+        median emission rate and the inter-quartile range of the emission rate estimates.
 
         Args:
             model_object (ELQModel): ELQModel object containing the quantification results
+            source_model_to_plot_key (str, optional): Key to use in the model_object.components dictionary to access
+              the SourceModel object. If None, defaults to "sources_combined".
             bin_size_x (float, optional): Size of the bins in the x-direction. Defaults to 1.
             bin_size_y (float, optional): Size of the bins in the y-direction. Defaults to 1.
             normalized_count_limit (float, optional): Limit for the normalized count to show on the map.
@@ -994,18 +998,30 @@ class Plot:
             burn_in (int, optional): Number of burn-in iterations to discard before calculating the statistics.
                 Defaults to 0.
             show_summary_results (bool, optional): Flag to show the summary results on the map. Defaults to True.
+            show_fixed_source_locations (bool, optional): Flag to show the fixed sources location when present in one
+                of the sourcemaps. Defaults to True.
 
         """
-        ref_latitude = model_object.components["source"].dispersion_model.source_map.location.ref_latitude
-        ref_longitude = model_object.components["source"].dispersion_model.source_map.location.ref_longitude
-        ref_altitude = model_object.components["source"].dispersion_model.source_map.location.ref_altitude
+        if source_model_to_plot_key is None:
+            source_model_to_plot_key = "sources_combined"
 
-        datetime_min_string = model_object.sensor_object.time.min().strftime("%d-%b-%Y, %H:%M:%S")
-        datetime_max_string = model_object.sensor_object.time.max().strftime("%d-%b-%Y, %H:%M:%S")
+        source_model = model_object.components[source_model_to_plot_key]
+        sensor_object = model_object.sensor_object
+
+        source_locations = source_model.all_source_locations
+        emission_rates = source_model.emission_rate
+
+        ref_latitude = source_locations.ref_latitude
+        ref_longitude = source_locations.ref_longitude
+        ref_altitude = source_locations.ref_altitude
+
+        datetime_min_string = sensor_object.time.min().strftime("%d-%b-%Y, %H:%M:%S")
+        datetime_max_string = sensor_object.time.max().strftime("%d-%b-%Y, %H:%M:%S")
 
         result_weighted, _, normalized_count, count_boolean, enu_points, summary_result = (
             calculate_rectangular_statistics(
-                model_object=model_object,
+                emission_rates=emission_rates,
+                source_locations=source_locations,
                 bin_size_x=bin_size_x,
                 bin_size_y=bin_size_y,
                 burn_in=burn_in,
@@ -1024,7 +1040,7 @@ class Plot:
         if show_summary_results:
             summary_trace = self.create_summary_trace(summary_result=summary_result)
 
-        self.create_empty_mapbox_figure(dict_key="count_map")
+        self.create_empty_map_figure(dict_key="count_map")
         trace = plot_polygons_on_map(
             polygons=polygons,
             values=normalized_count[count_boolean].flatten(),
@@ -1035,16 +1051,15 @@ class Plot:
         )
         self.figure_dict["count_map"].add_trace(trace)
         self.figure_dict["count_map"].update_layout(
-            mapbox_accesstoken=self.mapbox_token,
-            mapbox_style="carto-positron",
-            mapbox={"zoom": 15, "center": {"lon": ref_longitude, "lat": ref_latitude}},
+            map_style="carto-positron",
+            map={"zoom": 15, "center": {"lon": ref_longitude, "lat": ref_latitude}},
             title=f"Source location probability "
             f"(>={normalized_count_limit}) for "
             f"{datetime_min_string} to {datetime_max_string}",
             font_family="Futura",
             font_size=15,
         )
-        model_object.sensor_object.plot_sensor_location(self.figure_dict["count_map"])
+        sensor_object.plot_sensor_location(self.figure_dict["count_map"])
         self.figure_dict["count_map"].update_traces(showlegend=False)
 
         adjusted_result_weights = result_weighted.copy()
@@ -1052,7 +1067,7 @@ class Plot:
 
         median_of_all_emissions = np.nanmedian(adjusted_result_weights, axis=2)
 
-        self.create_empty_mapbox_figure(dict_key="median_map")
+        self.create_empty_map_figure(dict_key="median_map")
 
         trace = plot_polygons_on_map(
             polygons=polygons,
@@ -1064,20 +1079,19 @@ class Plot:
         )
         self.figure_dict["median_map"].add_trace(trace)
         self.figure_dict["median_map"].update_layout(
-            mapbox_accesstoken=self.mapbox_token,
-            mapbox_style="carto-positron",
-            mapbox={"zoom": 15, "center": {"lon": ref_longitude, "lat": ref_latitude}},
+            map_style="carto-positron",
+            map={"zoom": 15, "center": {"lon": ref_longitude, "lat": ref_latitude}},
             title=f"Median emission rate estimate for {datetime_min_string} to {datetime_max_string}",
             font_family="Futura",
             font_size=15,
         )
-        model_object.sensor_object.plot_sensor_location(self.figure_dict["median_map"])
+        sensor_object.plot_sensor_location(self.figure_dict["median_map"])
         self.figure_dict["median_map"].update_traces(showlegend=False)
 
         iqr_of_all_emissions = np.nanquantile(a=adjusted_result_weights, q=0.75, axis=2) - np.nanquantile(
             a=adjusted_result_weights, q=0.25, axis=2
         )
-        self.create_empty_mapbox_figure(dict_key="iqr_map")
+        self.create_empty_map_figure(dict_key="iqr_map")
 
         trace = plot_polygons_on_map(
             polygons=polygons,
@@ -1089,16 +1103,34 @@ class Plot:
         )
         self.figure_dict["iqr_map"].add_trace(trace)
         self.figure_dict["iqr_map"].update_layout(
-            mapbox_accesstoken=self.mapbox_token,
-            mapbox_style="carto-positron",
-            mapbox={"zoom": 15, "center": {"lon": ref_longitude, "lat": ref_latitude}},
+            map_style="carto-positron",
+            map={"zoom": 15, "center": {"lon": ref_longitude, "lat": ref_latitude}},
             title=f"Inter Quartile range (25%-75%) of emission rate "
             f"estimate for {datetime_min_string} to {datetime_max_string}",
             font_family="Futura",
             font_size=15,
         )
-        model_object.sensor_object.plot_sensor_location(self.figure_dict["iqr_map"])
+        sensor_object.plot_sensor_location(self.figure_dict["iqr_map"])
         self.figure_dict["iqr_map"].update_traces(showlegend=False)
+
+        if show_fixed_source_locations:
+            for key, _ in model_object.components.items():
+                if bool(re.search("fixed", key)):
+                    source_model_fixed = model_object.components[key]
+                    source_locations_fixed = source_model_fixed.all_source_locations
+                    source_location_fixed_lla = source_locations_fixed.to_lla()
+                    sources_lat = source_location_fixed_lla.latitude[:, 0]
+                    sources_lon = source_location_fixed_lla.longitude[:, 0]
+                    fixed_source_location_trace = go.Scattermap(
+                        mode="markers",
+                        lon=sources_lon,
+                        lat=sources_lat,
+                        name=f"Fixed source locations, {key}",
+                        marker={"size": 10, "opacity": 0.8},
+                    )
+                    self.figure_dict["count_map"].add_trace(fixed_source_location_trace)
+                    self.figure_dict["median_map"].add_trace(fixed_source_location_trace)
+                    self.figure_dict["iqr_map"].add_trace(fixed_source_location_trace)
 
         if show_summary_results:
             self.figure_dict["count_map"].add_trace(summary_trace)
@@ -1147,7 +1179,7 @@ class Plot:
     @staticmethod
     def create_summary_trace(
         summary_result: pd.DataFrame,
-    ) -> go.Scattermapbox:
+    ) -> go.Scattermap:
         """Helper function to create the summary information to plot on top of map type plots.
 
         We use the summary result calculated through the support functions module to create a trace which contains
@@ -1157,7 +1189,7 @@ class Plot:
             summary_result (pd.DataFrame): DataFrame containing the summary information for each source location.
 
         Returns:
-            summary_trace (go.Scattermapbox): Trace with summary information to plot on top of map type plots.
+            summary_trace (go.Scattermap): Trace with summary information to plot on top of map type plots.
 
         """
         summary_text_values = [
@@ -1176,11 +1208,11 @@ class Plot:
             for value in summary_result.index
         ]
 
-        summary_trace = go.Scattermapbox(
+        summary_trace = go.Scattermap(
             lat=summary_result.latitude,
             lon=summary_result.longitude,
             mode="markers",
-            marker=go.scattermapbox.Marker(size=14, color="black"),
+            marker=go.scattermap.Marker(size=14, color="black"),
             text=summary_text_values,
             name="Summary",
             hoverinfo="text",

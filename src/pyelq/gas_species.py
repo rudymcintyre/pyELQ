@@ -9,6 +9,7 @@ The superclass for the Gas species classes. It contains a few gas species with i
 calculate the density of the gas and do emission rate conversions from m^3/s to kg/hr and back
 
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Union
@@ -230,3 +231,25 @@ class NO2(GasSpecies):
 
     global_background = 0
     half_life = 12
+
+
+@dataclass
+class H2(GasSpecies):
+    """Defines the properties of H2."""
+
+    @property
+    def name(self):
+        """Str: Name of gas."""
+        return "Hydrogen"
+
+    @property
+    def molar_mass(self):
+        """Float: Molar Mass [g/mol]."""
+        return 2.01568
+
+    @property
+    def formula(self):
+        """Str: Chemical formula of gas."""
+        return "H2"
+
+    global_background = 0.5
